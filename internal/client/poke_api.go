@@ -35,7 +35,9 @@ type encounter struct {
 	} `json:"location_area"`
 	VersionDetails []struct {
 		EncounterDetails []struct {
-			Method struct{
+			Chance int `json:"chance"`
+			MaxLevel int `json:"max_level"`
+			Method struct {
 				Name string `json:"name"`
 			} `json:"method"`
 		} `json:"encounter_details"`
@@ -61,6 +63,14 @@ func (p *PokeApiClient) GetBasicInfo(keyword string) (*domain.PokeData, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
+	}
+
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, domain.ErrNotFound
 	}
 	var res searchPokemonResults
 	json.NewDecoder(resp.Body).Decode(&res)
@@ -92,15 +102,34 @@ func (p *PokeApiClient) GetEncounters(keyword string) ([]domain.LocationAreaEnco
 	if err != nil {
 		return nil, err
 	}
+
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, domain.ErrNotFound
+	}
+
 	var res []encounter
 	json.NewDecoder(resp.Body).Decode(&res)
 
 	encounters := make([]domain.LocationAreaEncounter, len(res))
 	for i, item := range res {
 		details := make([]domain.VersionDetail, len(item.VersionDetails))
-		for n, detail := range item.VersionDetails {
+		for n, vd := range item.VersionDetails {
+			eds := make([]domain.EncounterDetail, len(vd.EncounterDetails))
+			for j, ed := range vd.EncounterDetails {
+				eds[j] = domain.EncounterDetail{
+					Chance: ed.Chance,
+					MaxLevel: ed.MaxLevel,
+					MethodName: ed.Method.Name,
+				}
+			}
 			details[n] = domain.VersionDetail{
-				MaxChance: detail.MaxChance,
+				EncounterDetails: eds,
+				MaxChance: vd.MaxChance,
+				VersionName: vd.Version.Name,
 			}
 		}
 		encounters[i] = domain.LocationAreaEncounter{

@@ -5,7 +5,9 @@ import (
 	"pokedex/internal/client"
 	"bufio"
 	"fmt"
+	"strings"
 	"os"
+	"regexp"
 )
 
 func main() {
@@ -24,11 +26,25 @@ func run() {
 		if str == "exit" {
 			break
 		}
+		isValid, _ := regexp.MatchString("^[a-zA-Z0-9]*$", str)
+		if !isValid {
+			fmt.Println("Input must be alphanumeric only.")
+			continue
+		}
 		fmt.Println("++ RESULTS ++")
-		basicInfo, _ := cli.GetBasicInfo(str)
+		basicInfo, err := cli.GetBasicInfo(str)
+		if err != nil {
+			fmt.Println("Error searching pokemon: ", err)
+			continue
+		}
 		printBasicInfo(*basicInfo)
 
-		encounters, _ := cli.GetEncounters(str)
+		encounters, err := cli.GetEncounters(str)
+		if err != nil {
+			fmt.Println("Error searching pokemon's location area encounters: ", err)
+			continue
+		}
+		encounters = getKantoEncounters(encounters)
 		printEncounters(encounters)
 		fmt.Println("++   END   ++")
 	}
@@ -57,17 +73,32 @@ func printBasicInfo(results domain.PokeData) {
 
 func printEncounters(results []domain.LocationAreaEncounter) {
 	fmt.Println("Encounter Location(s) and Method(s) in Kanto: ")
+	if len(results) == 0 {
+		fmt.Println(" - ")
+		return
+	}
 	for i, ec := range results {
 		fmt.Printf("  %d. Name: %s\n", i+1, ec.Name)
 		fmt.Println("     Version details: ")
 		for _, vd := range ec.VersionDetails {
 			fmt.Println("      * Max chance: ", vd.MaxChance)
+			fmt.Println("        Version name: ", vd.VersionName)
 			fmt.Println("        Encounter details: ")
 			for _, ed := range vd.EncounterDetails {
-				fmt.Println("      - Chance: ", ed.Chance)
-				fmt.Println("        Max level: ", ed.MaxLevel)
-				fmt.Println("        Method name: ", ed.MethodName)
+				fmt.Println("          - Chance: ", ed.Chance)
+				fmt.Println("            Max level: ", ed.MaxLevel)
+				fmt.Println("            Method name: ", ed.MethodName)
 			}
 		}
 	}
+}
+
+func getKantoEncounters(results []domain.LocationAreaEncounter) []domain.LocationAreaEncounter {
+	filteredEncounters := make([]domain.LocationAreaEncounter, 0)
+	for _, ec := range results {
+		if strings.Contains(ec.Name, "kanto") {
+			filteredEncounters = append(filteredEncounters, ec)
+		}
+	}
+	return filteredEncounters
 }
