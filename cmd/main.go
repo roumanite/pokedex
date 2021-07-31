@@ -5,6 +5,7 @@ import (
 	"pokedex/internal/client"
 	"pokedex/internal/cache"
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"time"
 	"strings"
@@ -21,39 +22,42 @@ func run() {
 	scanner := bufio.NewScanner(os.Stdin)
 	cli := client.NewPokeApiClient()
 	c := cache.New(1 * time.Minute)
+	c.LoadFile("cache/cache.txt")
 
 	printHeader()
 	for {
 		fmt.Print("Search a pokemon by name or ID, or 'exit' to quit the program: ")
 		scanner.Scan()
-		str := scanner.Text()
-		if str == "exit" {
+		identifier := strings.ToLower(scanner.Text())
+		if identifier == "exit" {
 			break
 		}
-		isValid, _ := regexp.MatchString("^[a-zA-Z0-9]*$", str)
-		if !isValid || len(str) == 0 {
+		isValid, _ := regexp.MatchString("^[a-zA-Z0-9]*$", identifier)
+		if !isValid || len(identifier) == 0 {
 			fmt.Println("Input must be alphanumeric only.")
 			continue
 		}
 
-		_, err := strconv.ParseInt(str, 10, 64)
+		_, err := strconv.ParseInt(identifier, 10, 64)
 		isNotId := err != nil
 		isCached := false
 		data := &domain.PokeDataWithLocation{}
 		if isNotId {
-			if id, isFound := c.Get(str); isFound {
-				if cachedData, cacheFound := c.Get(id.(string)); cacheFound {
-					if pokeData, ok := cachedData.(*domain.PokeDataWithLocation); ok {
-						isCached = true
-						data = pokeData
-					}
-				}
+			if id, isFound := c.Get(identifier); isFound {
+				identifier = string(id.([]byte)[:])
+			}
+		}
+		if cachedData, cacheFound := c.Get(identifier); cacheFound {
+			pokeData, ok := cachedData.([]byte)
+			if ok {
+				json.Unmarshal(pokeData, data)
+				isCached = true
 			}
 		}
 
 		fmt.Println("++ RESULTS ++")
 		if !isCached {
-			basicInfo, err := cli.GetBasicInfo(str)
+			basicInfo, err := cli.GetBasicInfo(identifier)
 			if err != nil {
 				fmt.Println("Error searching pokemon: ", err)
 				continue
@@ -64,7 +68,7 @@ func run() {
 		printBasicInfo(data.PokeData)
 
 		if !isCached {
-			encounters, err := cli.GetEncounters(str)
+			encounters, err := cli.GetEncounters(identifier)
 			if err != nil {
 				fmt.Println("Error searching pokemon's location area encounters: ", err)
 				continue
@@ -76,15 +80,21 @@ func run() {
 		printEncounters(data.Encounters)
 		fmt.Println("++   END   ++")
 
-		c.Set(data.PokeData.Name, fmt.Sprint(data.PokeData.Id), cache.NoExpiration)
-		c.Set(
-			fmt.Sprint(data.PokeData.Id),
-			&domain.PokeDataWithLocation{
-				PokeData: data.PokeData,
-				Encounters: data.Encounters,
-			},
-			cache.DefaultExpiration,
-		)
+		if !isCached {
+			c.Set(data.PokeData.Name, fmt.Sprint(data.PokeData.Id), cache.NoExpiration)
+			
+			dataInString, _ := json.Marshal(data)
+			c.Set(
+				fmt.Sprint(data.PokeData.Id),
+				[]byte(dataInString),
+				cache.DefaultExpiration,
+			)
+		}
+	}
+	fmt.Println("See you again! Caching data for next time...")
+	err := c.Write("cache/cache.txt")
+	if err != nil {
+		fmt.Println("Error caching data: ", err)
 	}
 }
 
