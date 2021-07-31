@@ -24,6 +24,9 @@ The program must have the following functionality:
 
   ● If the stored information is over a week old, the data should be retrieved again from the API. If not, the data should be retrieved from the text file.
 
+## Design decision
+Cache is loaded from a file and saved when the program exits. Cache will be lost if program is terminated abruptly.
+
 ## Requirements
 Go 1.16
 

@@ -21,7 +21,7 @@ func main() {
 func run() {
 	scanner := bufio.NewScanner(os.Stdin)
 	cli := client.NewPokeApiClient()
-	c := cache.New(1 * time.Minute)
+	c := cache.New(24 * 7 * time.Hour)
 	c.LoadFile("cache/cache.txt")
 
 	printHeader()
@@ -81,7 +81,7 @@ func run() {
 		fmt.Println("++   END   ++")
 
 		if !isCached {
-			c.Set(data.PokeData.Name, fmt.Sprint(data.PokeData.Id), cache.NoExpiration)
+			c.Set(data.PokeData.Name, []byte(fmt.Sprint(data.PokeData.Id)), cache.NoExpiration)
 			
 			dataInString, _ := json.Marshal(data)
 			c.Set(
