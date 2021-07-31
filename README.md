@@ -34,3 +34,13 @@ Go 1.16
 ```
 make app
 ```
+
+### Build code
+```
+go build -x ./cmd/main.go
+```
+
+### Run build
+```
+./main
+```
