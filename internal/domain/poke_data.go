@@ -29,3 +29,8 @@ type PokeData struct {
 	Types []string
 	Stats []StatItem
 }
+
+type PokeDataWithLocation struct {
+	PokeData
+	Encounters []LocationAreaEncounter
+}

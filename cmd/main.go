@@ -3,9 +3,12 @@ package main
 import (
 	"pokedex/internal/domain"
 	"pokedex/internal/client"
+	"pokedex/internal/cache"
 	"bufio"
 	"fmt"
+	"time"
 	"strings"
+	"strconv"
 	"os"
 	"regexp"
 )
@@ -17,6 +20,7 @@ func main() {
 func run() {
 	scanner := bufio.NewScanner(os.Stdin)
 	cli := client.NewPokeApiClient()
+	c := cache.New(1 * time.Minute)
 
 	printHeader()
 	for {
@@ -27,26 +31,60 @@ func run() {
 			break
 		}
 		isValid, _ := regexp.MatchString("^[a-zA-Z0-9]*$", str)
-		if !isValid {
+		if !isValid || len(str) == 0 {
 			fmt.Println("Input must be alphanumeric only.")
 			continue
 		}
-		fmt.Println("++ RESULTS ++")
-		basicInfo, err := cli.GetBasicInfo(str)
-		if err != nil {
-			fmt.Println("Error searching pokemon: ", err)
-			continue
-		}
-		printBasicInfo(*basicInfo)
 
-		encounters, err := cli.GetEncounters(str)
-		if err != nil {
-			fmt.Println("Error searching pokemon's location area encounters: ", err)
-			continue
+		_, err := strconv.ParseInt(str, 10, 64)
+		isNotId := err != nil
+		isCached := false
+		data := &domain.PokeDataWithLocation{}
+		if isNotId {
+			if id, isFound := c.Get(str); isFound {
+				if cachedData, cacheFound := c.Get(id.(string)); cacheFound {
+					if pokeData, ok := cachedData.(*domain.PokeDataWithLocation); ok {
+						isCached = true
+						data = pokeData
+					}
+				}
+			}
 		}
-		encounters = getKantoEncounters(encounters)
-		printEncounters(encounters)
+
+		fmt.Println("++ RESULTS ++")
+		if !isCached {
+			basicInfo, err := cli.GetBasicInfo(str)
+			if err != nil {
+				fmt.Println("Error searching pokemon: ", err)
+				continue
+			}
+			data.PokeData = *basicInfo
+		}
+
+		printBasicInfo(data.PokeData)
+
+		if !isCached {
+			encounters, err := cli.GetEncounters(str)
+			if err != nil {
+				fmt.Println("Error searching pokemon's location area encounters: ", err)
+				continue
+			}
+			encounters = getKantoEncounters(encounters)
+			data.Encounters = encounters
+		}
+		
+		printEncounters(data.Encounters)
 		fmt.Println("++   END   ++")
+
+		c.Set(data.PokeData.Name, fmt.Sprint(data.PokeData.Id), cache.NoExpiration)
+		c.Set(
+			fmt.Sprint(data.PokeData.Id),
+			&domain.PokeDataWithLocation{
+				PokeData: data.PokeData,
+				Encounters: data.Encounters,
+			},
+			cache.DefaultExpiration,
+		)
 	}
 }
 
